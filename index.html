@@ -57,10 +57,7 @@
     font-weight: 600;
     color: #f0d060;
     line-height: 1;
-    transition: color 0.3s;
   }
-
-  .goal-value.flash { color: #ffffff; }
 
   .goal-unit {
     font-size: 11px;
@@ -84,23 +81,6 @@
   }
 
   .event-text span { color: #c8960c; font-weight: 600; }
-
-  .toast {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    background: #1a1400;
-    border: 1px solid #b8860b;
-    border-radius: 6px;
-    color: #f0d060;
-    font-size: 12px;
-    padding: 6px 14px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
-    z-index: 99;
-  }
-  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
@@ -128,8 +108,6 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
-
 <script>
   // -------------------------------------------------------
   // REPLACE these with your actual Pusher App Keys
@@ -137,31 +115,46 @@
   const PUSHER_CLUSTER = 'ap2'; // e.g. 'eu'
   // -------------------------------------------------------
 
-  let goalKuva = 13000000;
-  const EVENT_AMOUNT = 50000;
+  const STARTING_GOAL  = 13000000;
+  const EVENT_AMOUNT   = 50000;
+  const TICKER_DURATION = 1200; // ms for the count-up animation
+
+  // Reset to starting goal if ?reset is in the URL
+  let goalKuva = STARTING_GOAL;
+  if (window.location.search.includes('reset')) {
+    goalKuva = STARTING_GOAL;
+    history.replaceState(null, '', window.location.pathname);
+  }
 
   function fmt(n) { return Math.round(n).toLocaleString(); }
 
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
-  }
-
-  function addKuvaEvent(type) {
-    goalKuva += EVENT_AMOUNT;
+  function animateTicker(from, to) {
     const el = document.getElementById('display-goal');
-    el.textContent = fmt(goalKuva);
-    el.classList.add('flash');
-    setTimeout(() => el.classList.remove('flash'), 400);
-    showToast((type === 'sub' ? 'Sub' : 'Follow') + '! Goal +' + fmt(EVENT_AMOUNT));
+    const start = performance.now();
+    function step(now) {
+      const progress = Math.min((now - start) / TICKER_DURATION, 1);
+      // ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = Math.round(from + (to - from) * eased);
+      el.textContent = fmt(value);
+      if (progress < 1) requestAnimationFrame(step);
+      else el.textContent = fmt(to);
+    }
+    requestAnimationFrame(step);
   }
 
+  function addKuvaEvent(amount) {
+    const from = goalKuva;
+    goalKuva += amount;
+    animateTicker(from, goalKuva);
+  }
+
+  // Pusher listener
   const pusher = new Pusher(PUSHER_KEY, { cluster: PUSHER_CLUSTER });
   const channel = pusher.subscribe('kuvathon');
   channel.bind('kuva-event', function(data) {
-    addKuvaEvent(data.type);
+    const amount = (data.amount || 1) * EVENT_AMOUNT;
+    addKuvaEvent(amount);
   });
 </script>
 
